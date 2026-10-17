@@ -76,8 +76,11 @@ Add-Label '游戏 cfg 目录' 24 184 115 | Out-Null
 $gameBox = Add-Text $GameCfg 140 182 860
 $gameCheck = Add-Check '保存时包含 autoexec.cfg / dota_minimap.cfg（全账号共用）' 140 219 590 $true
 $videoCheck = Add-Check '保存画质 / 分辨率' 740 219 260 $false
+$script:advancedRules = $null
 Add-Label '方案名称' 24 264 110 | Out-Null
 $nameBox = Add-Text '我的设置' 140 260 390
+$advancedSummary = Add-Label '默认保存范围；高级文件选择未启用。' 24 292 976 18
+$advancedSummary.Font = New-Object Drawing.Font('Microsoft YaHei UI',8)
 
 $list = New-Object Windows.Forms.ListView
 $list.SetBounds(24,310,976,220); $list.View='Details'; $list.FullRowSelect=$true
@@ -138,13 +141,113 @@ function Get-AccountPath {
 }
 function Get-SelectedGameCfg { if ($gameCheck.Checked) { return $gameBox.Text }; return '' }
 
+function Show-AdvancedFiles {
+    param([switch]$TestDialog)
+    $catalog = @(Get-VaultFileCatalog -AccountPath (Get-AccountPath) -GameCfg $gameBox.Text -IncludeVideo:$videoCheck.Checked -IncludeGameCfg:$gameCheck.Checked)
+    $dialog = New-Object Windows.Forms.Form
+    $dialog.Text='高级：选择保存文件'
+    $dialog.Size=New-Object Drawing.Size(1180,760)
+    $dialog.StartPosition='CenterParent'; $dialog.Font=$form.Font; $dialog.MinimumSize=$dialog.Size
+    $enabled = New-Object Windows.Forms.CheckBox
+    $enabled.Text='启用自定义文件选择（仅本次打开工具有效；未启用时使用默认范围）'
+    $enabled.SetBounds(20,15,1100,28); $enabled.Checked=($null -ne $script:advancedRules)
+    $dialog.Controls.Add($enabled)
+    $hint = New-Object Windows.Forms.Label
+    $hint.Text='列出账号 local/cfg、remote/cfg、游戏 cfg 的全部文件，以及 cfg 外的关键设置。未知文件如实标注；云同步对照副本不可选。'
+    $hint.SetBounds(20,49,1120,43); $dialog.Controls.Add($hint)
+    $files = New-Object Windows.Forms.ListView
+    $files.SetBounds(20,96,1120,450); $files.View='Details'; $files.CheckBoxes=$true
+    $files.FullRowSelect=$true; $files.MultiSelect=$false; $files.ShowItemToolTips=$true; $files.HideSelection=$false
+    [void]$files.Columns.Add('文件 / 相对路径',340)
+    [void]$files.Columns.Add('位置',105)
+    [void]$files.Columns.Add('大小 / 状态',100)
+    [void]$files.Columns.Add('内容说明',540)
+    $dialog.Controls.Add($files)
+    $selected = @{}
+    if ($null -ne $script:advancedRules) { foreach($r in $script:advancedRules) { $selected["$($r.Root)/$($r.Path)"]=$true } }
+    foreach ($entry in $catalog) {
+        $row = New-Object Windows.Forms.ListViewItem($entry.Path)
+        [void]$row.SubItems.Add($(if($entry.Root -eq 'Account'){'账号设置'}else{'游戏共用'}))
+        [void]$row.SubItems.Add($(if(!$entry.Present){'未生成'}else{[string]$entry.Bytes+' B'}))
+        [void]$row.SubItems.Add($entry.Description)
+        $row.Tag=$entry; $row.ToolTipText=$entry.FullPath+"`r`n"+$entry.Description
+        $row.Checked = $entry.Selectable -and $(if($null -ne $script:advancedRules){$selected.ContainsKey("$($entry.Root)/$($entry.Path)")}else{$entry.Recommended})
+        if (!$entry.Selectable) { $row.ForeColor=[Drawing.Color]::Gray }
+        [void]$files.Items.Add($row)
+    }
+    $detail = New-Object Windows.Forms.TextBox
+    $detail.SetBounds(20,560,1120,83); $detail.Multiline=$true; $detail.ReadOnly=$true
+    $detail.Text='选择一行查看完整路径和说明。勾选“未生成”的文件会记录其缺失状态，切换时清理目标的同名残留；切换前仍会自动备份。'
+    $dialog.Controls.Add($detail)
+    $files.Add_SelectedIndexChanged({
+        if($files.SelectedItems.Count) {
+            $e=$files.SelectedItems[0].Tag
+            $detail.Text=$e.FullPath+"`r`n"+$e.Description+$(if(!$e.Selectable){"`r`n此文件类型不参与保存/恢复。"}elseif(!$e.Present){"`r`n未生成：选中会记录缺失状态，切换时移除目标同名文件。"}else{''})
+        }
+    })
+    $files.Add_ItemCheck({ param($sender,$eventArgs)
+        if (!$sender.Items[$eventArgs.Index].Tag.Selectable) { $eventArgs.NewValue=[Windows.Forms.CheckState]::Unchecked }
+    })
+    $default = New-Object Windows.Forms.Button
+    $default.Text='恢复默认范围'; $default.SetBounds(20,665,175,34)
+    $default.Add_Click({ $enabled.Checked=$false; foreach($row in $files.Items){$row.Checked=$row.Tag.Recommended -and $row.Tag.Selectable} })
+    $dialog.Controls.Add($default)
+    $open = New-Object Windows.Forms.Button
+    $open.Text='查看所选文件'; $open.SetBounds(210,665,175,34)
+    $open.Add_Click({
+        if($files.SelectedItems.Count -and $files.SelectedItems[0].Tag.Present) {
+            Start-Process notepad.exe -ArgumentList ('"'+$files.SelectedItems[0].Tag.FullPath+'"')
+        }
+    }); $dialog.Controls.Add($open)
+    $ok = New-Object Windows.Forms.Button
+    $ok.Text='确认保存范围'; $ok.SetBounds(780,665,175,34)
+    $ok.Add_Click({
+        if($enabled.Checked -and !$files.CheckedItems.Count){[Windows.Forms.MessageBox]::Show('请至少选择一个文件。') | Out-Null; return}
+        $dialog.DialogResult=[Windows.Forms.DialogResult]::OK
+    }); $dialog.Controls.Add($ok)
+    $cancel = New-Object Windows.Forms.Button
+    $cancel.Text='取消'; $cancel.SetBounds(970,665,170,34); $cancel.DialogResult='Cancel'; $dialog.Controls.Add($cancel)
+    $dialog.CancelButton=$cancel
+    if ($TestDialog) {
+        $dialog.Add_Shown({
+            [Windows.Forms.Application]::DoEvents()
+            $preview=New-Object Drawing.Bitmap($dialog.Width,$dialog.Height)
+            try { $dialog.DrawToBitmap($preview,(New-Object Drawing.Rectangle(0,0,$dialog.Width,$dialog.Height))); $preview.Save((Join-Path $DataDirectory 'advanced-ui-smoke.png')) }
+            finally { $preview.Dispose() }
+            $enabled.Checked=$true
+            foreach($row in $files.Items){$row.Checked=($row.Tag.Path -eq 'remote/cfg/dotakeys_personal.lst')}
+            $ok.PerformClick()
+        })
+    }
+    if($dialog.ShowDialog($form) -eq 'OK') {
+        if($enabled.Checked) {
+            $script:advancedRules=@(foreach($row in $files.CheckedItems){[pscustomobject]@{Root=$row.Tag.Root;Path=$row.Tag.Path}})
+            $advancedSummary.Text="高级自选已启用：保存 $($script:advancedRules.Count) 个文件/缺失状态；上方默认范围复选框暂不生效。"
+        } else {
+            $script:advancedRules=$null
+            $advancedSummary.Text='默认保存范围；高级文件选择未启用。'
+        }
+    }
+    $dialog.Dispose()
+}
+
+function Reset-AdvancedSelection {
+    $script:advancedRules=$null
+    $advancedSummary.Text='默认保存范围；高级文件选择未启用。'
+}
+$accountBox.Add_SelectedIndexChanged({ Reset-AdvancedSelection })
+$gameBox.Add_TextChanged({ Reset-AdvancedSelection })
+
 Add-Button '重新扫描账号' 718 97 155 { Invoke-Ui { Refresh-Accounts; Set-Status '已扫描，请选择账号。' } } | Out-Null
 Add-Button '保存当前设置' 550 256 180 { Invoke-Ui {
     Set-Status '正在保存当前设置…'
-    $path=Save-VaultProfile -Name $nameBox.Text.Trim() -AccountPath (Get-AccountPath) -Directory $profilesDir -GameCfg (Get-SelectedGameCfg) -IncludeVideo:$videoCheck.Checked
+    $saveGameCfg=Get-SelectedGameCfg
+    if ($null -ne $script:advancedRules) { $saveGameCfg=$gameBox.Text }
+    $path=Save-VaultProfile -Name $nameBox.Text.Trim() -AccountPath (Get-AccountPath) -Directory $profilesDir -GameCfg $saveGameCfg -IncludeVideo:$videoCheck.Checked -Rules $script:advancedRules
     Refresh-Profiles; Set-Status "已保存：$path"
 } } | Out-Null
 Add-Button '刷新列表' 749 256 120 { Invoke-Ui { Refresh-Profiles } } | Out-Null
+Add-Button '高级：文件' 880 256 120 { Invoke-Ui { Show-AdvancedFiles } } | Out-Null
 Add-Button '预览更改' 24 578 150 { Invoke-Ui {
     $s=Read-VaultSnapshot (Get-SelectedPath)
     $changes=Get-VaultChanges $s (Get-AccountPath) $gameBox.Text
@@ -182,6 +285,7 @@ Add-Button '下载云端方案' 460 688 180 { Invoke-Ui {
 } } | Out-Null
 
 Refresh-Accounts
+if ($GameCfg) { $gameBox.Text=$GameCfg }
 Refresh-Profiles
 if ($SmokeTest) {
     $form.Show(); [Windows.Forms.Application]::DoEvents()
@@ -189,6 +293,10 @@ if ($SmokeTest) {
     if ($AccountId) {
         $accountBox.SelectedItem = $AccountId
         if (!$accountBox.SelectedItem) { throw 'Smoke-test account not found' }
+        if ($null -ne $script:advancedRules) { throw 'Advanced mode must be disabled by default' }
+        Show-AdvancedFiles -TestDialog
+        if (@($script:advancedRules).Count -ne 1) { throw 'Advanced file selection failed' }
+        Write-Output 'GUI_ADVANCED_SELECTION_PASS'
         $nameBox.Text = 'GUI 保存测试'
         $beforeCount = $list.Items.Count
         $saveButton = $form.Controls | Where-Object { $_ -is [Windows.Forms.Button] -and $_.Text -eq '保存当前设置' }

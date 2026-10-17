@@ -128,5 +128,27 @@ $module=Get-Module Vault.Core
     Throws { Receive-VaultProfiles 'test/settings' $download } 'download refuses local version collision'
     Throws { Assert-VaultRepo 'https://github.com/x/y' } 'repository format validated'
     Check (@(Get-VaultAccounts (Join-Path $root 'steam')).Count -eq 2) 'multiple accounts discovered'
+    Put (Join-Path $a 'remote/cfg/custom_extra.cfg') 'bind Z custom_command'
+    Put (Join-Path $a 'local/cfg/user_keys_0_slot0.vcfg_lastclouded') 'cloud baseline'
+    Put (Join-Path $game 'boot.vcfg') 'engine boot'
+    $catalog=@(Get-VaultFileCatalog -AccountPath $a -GameCfg $game -IncludeGameCfg)
+    $custom=@($catalog | Where-Object Path -eq 'remote/cfg/custom_extra.cfg')[0]
+    Check ($custom.Selectable -and !$custom.Recommended) 'custom cfg visible but not selected by default'
+    Check ($custom.Description -match '用途待确认') 'unknown file description is explicit'
+    Check (!@($catalog | Where-Object Path -like '*lastclouded')[0].Selectable) 'cloud metadata visible but not selectable'
+    Check (@($catalog | Where-Object Path -eq 'remote/user_convars.vcfg').Count -eq 1) 'catalog includes key settings outside cfg'
+    Check (@($catalog | Where-Object Path -eq 'boot.vcfg').Count -eq 1) 'catalog includes shared game cfg files'
+    $customProfile=Save-VaultProfile -Name '高级自选' -AccountPath $a -Directory $profiles -Rules @([pscustomobject]@{Root='Account';Path='remote/cfg/custom_extra.cfg'})
+    $customSnapshot=Read-VaultSnapshot $customProfile
+    Check (@($customSnapshot.Files).Count -eq 1) 'advanced capture contains only selected file'
+    $priorKeys=[IO.File]::ReadAllText((Join-Path $b $keys))
+    $customBackup=Restore-VaultProfile $customProfile $b '' $rollback -CloudDisabled
+    Check ([IO.File]::ReadAllText((Join-Path $b 'remote/cfg/custom_extra.cfg')) -eq 'bind Z custom_command') 'custom cfg restoration works'
+    Check ([IO.File]::ReadAllText((Join-Path $b $keys)) -eq $priorKeys) 'advanced restore leaves unselected keys unchanged'
+    Restore-VaultProfile $customBackup $b '' $rollback -CloudDisabled | Out-Null
+    Check (!(Test-Path (Join-Path $b 'remote/cfg/custom_extra.cfg'))) 'custom cfg rollback restores absence'
+    Check (!(Test-VaultFileAllowed 'Account' 'remote/cfg/../loginusers.vdf')) 'advanced paths cannot escape cfg'
+    Check (!(Test-VaultFileAllowed 'Account' 'remote/cfg/evil.ps1')) 'executable scripts outside config formats rejected'
+    Check (!(Test-VaultFileAllowed 'Account' 'remote/cfg/CON.txt')) 'reserved Windows devices rejected'
     Write-Host "ALL $script:passed TESTS PASSED"
 } $root

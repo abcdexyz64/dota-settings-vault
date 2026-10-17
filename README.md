@@ -18,7 +18,7 @@ Windows 中文小工具，保存与切换 Dota 2 的个人键位、界面和操�
 
 ## 保存哪些内容
 
-从 `Steam/userdata/<账号目录>/570` 按固定白名单保存：
+默认从 `Steam/userdata/<账号目录>/570` 按固定范围保存：
 
 - `remote/cfg/dotakeys_personal.lst`：通用和英雄独立键位。
 - `remote/user_convars.vcfg`、`remote/user_keys.vcfg`：远端缓存的操作设置和绑定。
@@ -33,6 +33,16 @@ Windows 中文小工具，保存与切换 Dota 2 的个人键位、界面和操�
 未保存聊天记录、好友、登录信息、饰品数据、屏蔽名单、Steam 登录令牌或 `remotecache.vdf`。不修改 `*.vcfg_lastclouded` 同步状态文件。Steam 启动参数、外部脚本、autoexec 通过 exec 引用的其他文件和自定义英雄攻略暂不包含。autoexec 是游戏命令，恢复云端方案前应确认它是自己的可信备份。
 
 **方案内记录为“不存在”的白名单文件，在切换时会移除目标上的同名文件**，避免混入另一位玩家残留的编组、键位或 autoexec。移除前也会备份。方案范围外的文件不变；不含画质的方案不会移除画质文件。
+
+## 高级：自己选择文件（默认关闭）
+
+点击主窗口 **高级：文件**，可查看账号 `local/cfg`、`remote/cfg`、游戏共用 `game/dota/cfg` 下的全部文件，以及 cfg 以外的关键键位、操作选项和编组文件。列表显示位置、大小/缺失状态及用途说明；选择一行可看完整说明，**查看所选文件** 用记事本打开原文件（若编辑并保存，会直接改变原文件）。
+
+默认不启用高级模式。只有勾选 **启用自定义文件选择**、选择需要的文件，再点击 **确认保存范围**，后续保存才使用自选范围。高级模式下，上方 autoexec / 画质复选框不再决定保存范围。恢复默认、切换目标账号/游戏目录或重新打开工具都会关闭高级模式。恢复已有方案始终按该方案当时记录的文件范围执行，不受当前保存选项影响。
+
+已知文件标注内容；不认识的文件明确写“用途待确认”，不保证能自动判断任意自定义脚本的含义。游戏默认配置、启动日志、缓存等不是核心个人设置，默认不选。Steam `*.vcfg_lastclouded` 对照副本可以看到但不能选，避免把同步元数据当成玩家方案恢复。
+
+高级模式支持这些 cfg 目录内的 `.cfg`、`.vcfg`、`.lst`、`.json`、`.txt`、`.kv`、`.vdf`、`.dat`、`.bak` 文件；其他类型可查看但不参与恢复。不会自动递归跟随 autoexec 的 `exec` 命令，若引用的配置也在列表中，需要一起勾选。单文件最多 2 MB、总原始内容最多 8 MB；GitHub 仍有单快照 900 KB 上限。
 
 ## Steam 云同步边界
 
@@ -68,6 +78,6 @@ Dota 2 同时有本地文件、Steam 云和游戏运行时状态。外部脚本�
 
 ## 验证
 
-运行 `powershell -NoProfile -ExecutionPolicy Bypass -File .\tests\Run.Tests.ps1`。测试使用临时模拟目录，不切换真实账号；覆盖保存/切换/回滚、缺失文件、损坏备份、路径限制、写入失败回滚和 GitHub API 模拟往返。GUI 冒烟可用 `DotaSettings.ps1 -SmokeTest -DataDirectory <临时绝对路径>`。
+运行 `powershell -NoProfile -ExecutionPolicy Bypass -File .\tests\Run.Tests.ps1`。测试使用临时模拟目录，不切换真实账号；覆盖保存/切换/回滚、高级文件选择、缺失文件、损坏备份、路径限制、写入失败回滚和 GitHub API 模拟往返。GUI 冒烟可用 `DotaSettings.ps1 -SmokeTest -DataDirectory <临时绝对路径>`。
 
 真实游戏内是否生效需要在退出 Steam、关闭云同步后完成一次切换并启动游戏核对；文件级验证不代表已验证 Steam 云端或游戏运行时状态。

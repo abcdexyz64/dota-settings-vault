@@ -22,6 +22,98 @@ function Get-VaultHash([byte[]]$Bytes) {
     finally { $sha.Dispose() }
 }
 
+function Test-VaultFileAllowed([string]$Root, [string]$Path) {
+    if (@(Get-VaultRules | Where-Object { $_.Root -ceq $Root -and $_.Path -ceq $Path }).Count) { return $true }
+    if ($Path.Length -gt 220 -or $Path -match '[\\\x00-\x1f<>:"|?*]' -or $Path.StartsWith('/')) { return $false }
+    foreach ($part in $Path.Split('/')) {
+        if (!$part -or $part -in @('.','..') -or $part.EndsWith('.') -or $part.EndsWith(' ') -or
+            $part -match '^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(\.|$)') { return $false }
+    }
+    if ($Root -ceq 'Account') {
+        if ($Path -cnotmatch '^(local|remote)/cfg/.+') { return $false }
+    } elseif ($Root -cne 'GameCfg') { return $false }
+    # Last-clouded files are Steam synchronization metadata, not a user profile.
+    return [IO.Path]::GetExtension($Path).ToLowerInvariant() -in @('.cfg','.vcfg','.lst','.json','.txt','.kv','.vdf','.dat','.bak')
+}
+
+function Get-VaultFileDescription([string]$Path) {
+    $leaf = ($Path -split '/')[-1]
+    switch -Regex ($leaf) {
+        '^dotakeys_personal\.lst$' { return '通用及英雄独立技能、物品等键位。' }
+        '^user_convars.*\.vcfg$' { return '玩家操作与界面选项，如小地图位置、施法方式、镜头参数。' }
+        '^user_keys.*\.vcfg$' { return '按键绑定；与 dotakeys_personal.lst 配合保存。' }
+        'vcfg_lastclouded$' { return 'Steam 上次云同步的对照副本，不是当前设置；不参与切换。' }
+        '^machine_convars.*\.vcfg$' { return '机器级选项，含镜头、音频等；跨电脑可能需要重新调整。' }
+        '^video\.txt$' { return '画质、分辨率、显示模式等硬件相关设置。' }
+        '\.bak$' { return '游戏或其他工具生成的旧备份，通常不是当前生效设置。' }
+        '^autoexec\.cfg$' { return '启动时执行的自定义控制台命令/绑定；此安装下所有账号共用。' }
+        '^dota_minimap\.cfg$' { return '小地图样式预设；实际玩家当前选项还在 user_convars 中。' }
+        '^config\.cfg$' { return '旧版或自定义综合配置，可能含绑定和控制台选项。' }
+        '^control_groups\.txt$' { return '单位控制编组；位于 remote/scripts，不能只备份 cfg。' }
+        '^hero_grid_config\.json$' { return '自定义英雄选择网格/分组。' }
+        '^hero_facet_config\.cfg$' { return '英雄命石选择偏好。' }
+        '^chat\.cfg$' { return '聊天相关状态/配置，可能含频道等个人信息；非核心键位。' }
+        '^herobuilds\.cfg$' { return '英雄出装/攻略选择相关配置；不是攻略文件本体。' }
+        '^dota_armory_filters\.txt$' { return '军械库物品筛选偏好。' }
+        '^dota_player_loadout_shuffle\.txt$' { return '饰品装备随机轮换配置。' }
+        '^saved_sets\.kv$' { return '保存的饰品套装/装备组合配置。' }
+        '^fantasy_crafting\.lst$' { return '梦幻挑战制作相关状态，非键位。' }
+        '^challenge_selections\.cfg$' { return '挑战选择相关状态，非核心操作设置。' }
+        '^(contextual_tips_history\.json|dismissed_help_tips\.txt)$' { return '已显示/已关闭的游戏教学提示记录。' }
+        '^viewedheropatches\.cfg$' { return '已查看的英雄更新说明记录。' }
+        '^pending_replay_requests\.lst$' { return '待处理录像请求列表，非操作设置。' }
+        '^last_match\.dat$' { return '最近比赛相关状态；内部字段未解析。' }
+        '^stats\.dat$' { return '本地统计状态文件；内部字段未解析，非核心键位。' }
+        '^dota_player_scratchpad\.txt$' { return '玩家临时/草稿状态；具体用途未确认。' }
+        '^trustedlaunch\.cfg$' { return '可信启动相关诊断记录；通常不需要随个人方案保存。' }
+        '^latest_conduct_.*\.txt$' { return '账号行为评价相关缓存，通常无需保存。' }
+        '^change_logs_viewed\.txt$' { return '已查看的更新日志记录。' }
+        '^boot\.vcfg$' { return '游戏启动配置，属于安装级文件，不建议随玩家方案切换。' }
+        '^(configdefaults\.|configschema\.|user_keys_(default|dev_default)\.)' { return '游戏自带默认值/配置定义；通常不应由个人方案覆盖。' }
+        '^lan_server\.cfg$' { return '局域网服务器配置，通常不是个人操作设置。' }
+        '^perftest\.cfg$' { return '性能测试配置，通常不是个人操作设置。' }
+        default { return '未识别的自定义或游戏配置；用途待确认，可先打开查看内容。' }
+    }
+}
+
+function Get-VaultFileCatalog {
+    param([string]$AccountPath, [string]$GameCfg = '', [switch]$IncludeVideo, [switch]$IncludeGameCfg)
+    $catalog = @{}
+    foreach ($rule in Get-VaultRules) {
+        if ($rule.Root -eq 'GameCfg' -and !$GameCfg) { continue }
+        $recommended = ($rule.Path -ne 'local/cfg/video.txt' -or $IncludeVideo) -and
+            ($rule.Root -ne 'GameCfg' -or $IncludeGameCfg)
+        $catalog["$($rule.Root)/$($rule.Path)"] = [pscustomobject]@{ Root=$rule.Root; Path=$rule.Path; Recommended=$recommended }
+    }
+    $scan = @(
+        @{Root='Account'; Base=$AccountPath; Prefix='local/cfg'},
+        @{Root='Account'; Base=$AccountPath; Prefix='remote/cfg'}
+    )
+    if ($GameCfg) { $scan += @{Root='GameCfg';Base=$GameCfg;Prefix=''} }
+    foreach ($location in $scan) {
+        $dir = if ($location.Prefix) { Join-Path $location.Base $location.Prefix } else { $location.Base }
+        if (!(Test-Path -LiteralPath $dir -PathType Container)) { continue }
+        $base = [IO.Path]::GetFullPath($location.Base).TrimEnd('\','/')
+        # Deliberately enumerate these cfg folders only, never the game asset tree.
+        foreach ($file in Get-ChildItem -LiteralPath $dir -File -Recurse) {
+            $relative = $file.FullName.Substring($base.Length+1).Replace('\','/')
+            $key = "$($location.Root)/$relative"
+            if (!$catalog.ContainsKey($key)) {
+                $catalog[$key] = [pscustomobject]@{ Root=$location.Root; Path=$relative; Recommended=$false }
+            }
+        }
+    }
+    foreach ($entry in $catalog.Values | Sort-Object Root,Path) {
+        $base = if ($entry.Root -eq 'Account') { $AccountPath } else { $GameCfg }
+        $path = Resolve-VaultTarget $base $entry.Path
+        $exists = [IO.File]::Exists($path)
+        [pscustomobject]@{ Root=$entry.Root; Path=$entry.Path; FullPath=$path; Present=$exists
+            Bytes=if($exists){(Get-Item -LiteralPath $path).Length}else{0}
+            Recommended=$entry.Recommended; Selectable=(Test-VaultFileAllowed $entry.Root $entry.Path)
+            Description=(Get-VaultFileDescription $entry.Path) }
+    }
+}
+
 function Write-VaultAtomic([string]$Path, [byte[]]$Bytes) {
     $parent = Split-Path -Parent $Path
     [IO.Directory]::CreateDirectory($parent) | Out-Null
@@ -93,14 +185,12 @@ function Resolve-VaultTarget([string]$Root, [string]$Relative) {
 function Assert-VaultSnapshot($Snapshot) {
     if ($Snapshot.Schema -ne 1 -or $Snapshot.Id -cnotmatch '^[a-f0-9]{32}$' -or
         [string]::IsNullOrWhiteSpace($Snapshot.Name) -or $Snapshot.Name.Length -gt 80) { throw '备份格式不受支持。' }
-    $allowed = @{}
-    foreach ($rule in Get-VaultRules) { $allowed["$($rule.Root)/$($rule.Path)"] = $true }
     $seen = @{}
     $total = 0
-    if (@($Snapshot.Files).Count -lt 1 -or @($Snapshot.Files).Count -gt $allowed.Count) { throw '备份文件数量无效。' }
+    if (@($Snapshot.Files).Count -lt 1 -or @($Snapshot.Files).Count -gt 1000) { throw '备份文件数量无效。' }
     foreach ($entry in $Snapshot.Files) {
         $key = "$($entry.Root)/$($entry.Path)"
-        if (!$allowed.ContainsKey($key) -or $seen.ContainsKey($key) -or $entry.Present -isnot [bool]) {
+        if (!(Test-VaultFileAllowed $entry.Root $entry.Path) -or $seen.ContainsKey($key) -or $entry.Present -isnot [bool]) {
             throw "备份包含重复或未授权的路径：$key"
         }
         $seen[$key] = $true
@@ -131,9 +221,11 @@ function New-VaultSnapshot {
         })
     }
     $files = @(foreach ($rule in $Rules) {
+        if (!(Test-VaultFileAllowed $rule.Root $rule.Path)) { throw '不允许保存该路径或文件类型。' }
         $root = if ($rule.Root -eq 'Account') { $AccountPath } else { $GameCfg }
         $path = Resolve-VaultTarget $root $rule.Path
         $exists = [IO.File]::Exists($path)
+        if ($exists -and (Get-Item -LiteralPath $path).Length -gt 2000000) { throw "单个配置文件超过 2 MB：$($rule.Path)" }
         $bytes = [byte[]]@()
         if ($exists) { $bytes = [IO.File]::ReadAllBytes($path) }
         [pscustomobject]@{ Root = $rule.Root; Path = $rule.Path; Present = $exists
@@ -157,9 +249,9 @@ function Save-VaultSnapshot($Snapshot, [string]$Directory) {
 }
 
 function Save-VaultProfile {
-    param([string]$Name, [string]$AccountPath, [string]$Directory, [string]$GameCfg = '', [switch]$IncludeVideo)
+    param([string]$Name, [string]$AccountPath, [string]$Directory, [string]$GameCfg = '', [switch]$IncludeVideo, $Rules)
     Assert-VaultIdle
-    $snapshot = New-VaultSnapshot -Name $Name -AccountPath $AccountPath -GameCfg $GameCfg -IncludeVideo:$IncludeVideo
+    $snapshot = New-VaultSnapshot -Name $Name -AccountPath $AccountPath -GameCfg $GameCfg -IncludeVideo:$IncludeVideo -Rules $Rules
     # Reject a mixed snapshot if the game/cloud writes while we are copying.
     foreach ($entry in $snapshot.Files) {
         $root = if ($entry.Root -eq 'Account') { $AccountPath } else { $GameCfg }
@@ -292,4 +384,4 @@ function Receive-VaultProfiles([string]$Repository, [string]$Directory) {
 
 Export-ModuleMember -Function Get-VaultSteamPath, Get-VaultAccounts, Get-VaultGameCfg, Get-VaultRules, `
     Read-VaultSnapshot, Save-VaultProfile, Restore-VaultProfile, Get-VaultChanges, `
-    New-VaultRepository, Send-VaultProfile, Receive-VaultProfiles
+    New-VaultRepository, Send-VaultProfile, Receive-VaultProfiles, Get-VaultFileCatalog
