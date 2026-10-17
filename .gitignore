@@ -1,0 +1,4 @@
+data/
+test-output/
+*.tmp
+*.log
