@@ -382,6 +382,9 @@ function Receive-VaultProfiles([string]$Repository, [string]$Directory) {
     return $count
 }
 
+. (Join-Path $PSScriptRoot 'Vault.Portable.ps1')
+. (Join-Path $PSScriptRoot 'Vault.Inspect.ps1')
 Export-ModuleMember -Function Get-VaultSteamPath, Get-VaultAccounts, Get-VaultGameCfg, Get-VaultRules, `
     Read-VaultSnapshot, Save-VaultProfile, Restore-VaultProfile, Get-VaultChanges, `
-    New-VaultRepository, Send-VaultProfile, Receive-VaultProfiles, Get-VaultFileCatalog
+    New-VaultRepository, Send-VaultProfile, Receive-VaultProfiles, Get-VaultFileCatalog, `
+    Export-VaultPackage, Import-VaultInput, Get-VaultParameters

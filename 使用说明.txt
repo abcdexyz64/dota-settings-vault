@@ -1,0 +1,154 @@
+泉印 · Dota 2 配置管家
+使用说明 / v2.0
+
+一、先选级别，再做事情
+
+简单操作：打开原配置目录，保存个人设置，导出文件夹，拖入或指定路径导入，预览和替换。无需 GitHub。
+进阶：包含全部简单操作，增加自己 GitHub 私有仓库的上传与下载。
+高级功能：包含全部进阶功能，增加文件清单、文件内部参数及用途说明，也可以自选保存范围。
+
+三个级别共用同一个方案库。切换级别不会复制、删除或替换设置。首次启动始终是简单操作。
+高级“自选保存范围”默认关闭；离开高级级别或切换账号后恢复默认。它只影响下一次保存，不改变已有方案。
+
+二、默认保存在哪里
+
+程序目录/data/profiles：校验过的个人快照，供方案库和 GitHub 使用。
+程序目录/data/exports：默认导出位置，每次生成一个独立备份文件夹；不会默认写到桌面。
+程序目录/data/rollback：每次替换前自动保存的原配置；在方案库里选“自动回滚备份”即可恢复。
+程序目录/data/preferences.json：保存用户填写的仓库和导出位置，不含 GitHub 令牌。
+
+“保存并打开”会同时存入方案库，并把可查看的原文件导出到上方指定位置，然后打开导出文件夹。
+要传递给朋友，可以选择方案，点“导出所选到桌面”。也可以用“选择”按钮指定 U 盘或其他目录。
+相同名称再次保存会生成新版本，不会覆盖历史版本。
+
+三、游戏的设置究竟放在哪里
+
+S = Steam 安装目录，例如 E:/steam
+U = S/userdata/数字账号目录/570（数字目录是 Steam Account ID，不是昵称）
+G = Dota 2 安装目录/game/dota/cfg（可在其他 Steam 库中，程序会自动扫描）
+
+U/local/cfg
+  当前电脑使用的玩家选项、键位槽位、机器选项和画质配置。
+U/remote/cfg
+  Steam 云缓存中的个人键位、英雄网格、命石偏好及一些游戏状态。
+U/remote
+  还存有 user_convars.vcfg、user_keys.vcfg，不能只复制子目录 cfg。
+U/remote/scripts
+  编组等其他玩家状态。默认只保存 control_groups.txt。
+G
+  安装级配置，包含 autoexec 和游戏默认配置；同一安装下所有账号共用。
+
+因此 cfg 包含很多个人设置，但并不是全部。默认方案组合保存必要文件。
+Steam 的启动参数、登录设置、饰品/好友资料不是这里的键位方案，默认不备份。
+
+四、主要文件用途
+
+【默认保存；不存在的文件会记录为“未生成”】
+remote/cfg/dotakeys_personal.lst
+  通用键位、英雄独立键位、施法绑定等。
+remote/user_convars.vcfg
+  玩家界面与操作选项的云缓存，包含小地图、镜头、施法偏好等。
+remote/user_keys.vcfg
+  云缓存按键与控制台命令绑定。
+local/cfg/user_convars_0_slot0..3.vcfg
+  本地各槽位的玩家选项，与 remote 版本一起保存。
+local/cfg/user_keys_0_slot0..3.vcfg
+  本地各槽位按键绑定。
+local/cfg/machine_convars.vcfg
+  机器级镜头、音频等选项；跨电脑后请检查与硬件有关的设置。
+remote/cfg/config.cfg
+  旧版或自定义综合配置，兼容保存。
+remote/cfg/hero_grid_config.json
+  自定义英雄网格与分组。
+remote/cfg/hero_facet_config.cfg
+  英雄命石偏好。
+remote/scripts/control_groups.txt
+  单位控制编组。
+游戏 cfg/autoexec.cfg
+  启动时执行的自定义命令和按键；所有账号共用。请只恢复可信来源。
+游戏 cfg/dota_minimap.cfg
+  小地图样式预设；实际当前选项还在 user_convars 中。
+
+【高级可选择；默认不保存】
+local/cfg/video.txt：画质、分辨率和显示模式。
+*.bak：旧备份，不一定是当前生效版本。
+chat.cfg：聊天相关状态/配置，可能含个人频道信息。
+herobuilds.cfg：英雄攻略/出装选择配置，不是攻略文件本体。
+dota_armory_filters.txt：军械库筛选偏好。
+dota_player_loadout_shuffle.txt：饰品随机轮换配置。
+saved_sets.kv：保存的饰品套装/装备组合。
+fantasy_crafting.lst：梦幻挑战制作相关状态。
+challenge_selections.cfg：挑战选择状态。
+contextual_tips_history.json、dismissed_help_tips.txt：教学提示记录。
+viewedheropatches.cfg、change_logs_viewed.txt：已查看的更新记录。
+pending_replay_requests.lst：录像请求状态。
+last_match.dat、stats.dat：比赛/统计状态，内部格式未完全解析。
+dota_player_scratchpad.txt：玩家临时状态，具体字段用途待确认。
+trustedlaunch.cfg：可信启动诊断记录，通常不需随方案保存。
+latest_conduct_*.txt：行为评价缓存，通常不需保存。
+boot.vcfg：安装级启动配置。
+configdefaults.*、configschema.vcfg、user_keys_default.vcfg：游戏默认值/配置定义。
+machine_convars_default*.vcfg：游戏机器选项默认值，通常不应覆盖。
+lan_server.cfg：局域网服务器配置。
+perftest.cfg：性能测试配置。
+其他自定义 cfg：显示实际文件名，未知用途会明确标注。
+
+【可以查看，但不参与替换】
+*.vcfg_lastclouded：Steam 上次同步的对照副本；不是当前玩家设置。
+remotecache.vdf：Steam 云文件元数据，不在保存范围内。
+其他不支持的文件类型：不当作配置执行或还原。
+
+五、导入与替换
+
+可直接拖入：泉印导出的文件夹、backup.json 或旧版本快照 JSON、单个 .lst/.vcfg/.cfg 等配置文件、普通配置目录。
+也可以用“文件”“文件夹”选择，或者把路径粘贴到输入框再点“导入”。每次导入一个文件或目录。
+
+泉印导出文件夹内：
+  Account/... 是账号文件；GameCfg/... 是游戏共用文件。
+  backup.json 保存导出瞬间的完整快照。
+  导入整个文件夹时读取清单内的原文件，允许事先编辑这些文件；缺少原本存在的文件时会拒绝导入。
+  直接导入 backup.json 则使用导出时的内容。
+  目录内额外新增、不在清单中的文件不会自动加入，请单独导入它。
+
+普通文件/目录只导入实际存在且受支持的配置，不会以“缺少其他文件”为由清空其他设置。
+已知文件名可以自动判断位置；有歧义时需要选择 local/cfg、remote/cfg 或游戏 cfg。
+导入只进入方案库，不会立刻覆盖游戏。选择方案 → 预览更改 → 替换当前设置。
+
+替换前请先关闭 Dota 2，并在 Steam → Dota 2 → 属性 → 通用关闭此游戏的云同步，再从托盘正常退出 Steam。
+程序不会强制结束进程。Steam/游戏仍运行时会拒绝替换。
+原文件会先自动备份，写入后校验；写入失败会尝试自动回滚。可随时选择自动回滚版本恢复。
+快照中标记“未生成”的文件会在恢复时清理目标同名残留；范围之外的文件不变。
+
+Steam 云同步重新开启后可能覆盖本地设置，外部工具不能保证战胜云端副本。
+共用账号频繁切换时，可保持此游戏云同步关闭，用泉印 + GitHub 保存各自方案。
+
+六、GitHub 进阶用法
+
+安装 https://cli.github.com/ 的 GitHub CLI，点“登录 / 切换自己的 GitHub”，按浏览器流程授权。
+已有多个已登录账号时，在终端用 gh auth switch 切换。
+填“用户名/仓库名”，使用已有可写私有仓库，或者点击“新建私有仓库”。
+选择本地方案并上传。每个版本独立保存，重复上传不会覆盖其他版本。
+换电脑后登录自己的 GitHub，下载云端方案，再到本地方案页预览和替换。
+新建空仓库需要先上传一个方案，再下载。
+只允许上传到私有仓库。公开源码仓库不包含 data 目录和你的个人设置。
+
+七、高级参数怎么读
+
+选中一个文件，下方列出可解析条目：参数/按键、原始值、用途、说明依据。
+选中条目可看完整值、所属分组路径、原文件行号；搜索可匹配名称、值、分组或说明。
+“已知用途”是有明确对应关系的参数；“结构说明”解释键位字段的角色。
+“按名称归类”仅判断所属功能，不保证知道每个细节；“待确认”不会编造解释。
+复杂或不支持的文本行保留为“未解析原文”；含二进制的文件说明无法可靠展开。
+JSON 行号显示为 0，使用分组路径定位。查看器只读，不执行 bind、alias、exec 或其他命令。
+部分参数枚举随 Dota 2 版本改变，因此不会把小地图某个数字硬写成左或右。
+
+需要只保存部分文件：勾选“启用自选保存范围”，在上表勾选文件，再到本地方案页保存。
+高级可保存 cfg 范围内 .cfg .vcfg .lst .json .txt .kv .vdf .dat .bak；云同步对照文件不可选。
+单文件 2 MB、总原始内容 8 MB；GitHub 单快照最多 900 KB。
+
+八、启动、迁移和验证边界
+
+双击“泉印.exe”或 Start.cmd。无需管理员权限；本地功能使用 Windows 自带 PowerShell/WPF。
+迁移时复制整个程序文件夹即可带走方案库，也可只导出需要的方案给另一台电脑。
+程序不改变游戏进程、不注入插件，只在游戏退出后管理配置文件。
+文件级验证不能替代游戏内核对。切换后请进入游戏确认键位、小地图等实际效果。

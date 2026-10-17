@@ -150,5 +150,56 @@ $module=Get-Module Vault.Core
     Check (!(Test-VaultFileAllowed 'Account' 'remote/cfg/../loginusers.vdf')) 'advanced paths cannot escape cfg'
     Check (!(Test-VaultFileAllowed 'Account' 'remote/cfg/evil.ps1')) 'executable scripts outside config formats rejected'
     Check (!(Test-VaultFileAllowed 'Account' 'remote/cfg/CON.txt')) 'reserved Windows devices rejected'
+    $package=Export-VaultPackage $first (Join-Path $root 'exports')
+    Check (Test-Path (Join-Path $package 'Account/remote/cfg/dotakeys_personal.lst')) 'portable export contains original keys'
+    Check ((Get-VaultHash ([IO.File]::ReadAllBytes((Join-Path $package 'Account/remote/cfg/dotakeys_personal.lst')))) -eq (Get-VaultHash ([IO.File]::ReadAllBytes((Join-Path $a $keys))))) 'portable original bytes match'
+    Check (Test-Path (Join-Path $package 'GameCfg/autoexec.cfg')) 'portable export separates shared cfg'
+    $imported=Import-VaultInput $package $profiles
+    Check (@((Read-VaultSnapshot $imported).Files).Count -eq @($s.Files).Count) 'portable import preserves scope'
+    Put (Join-Path $package 'Account/remote/cfg/dotakeys_personal.lst') 'edited keys'
+    $edited=Read-VaultSnapshot (Import-VaultInput $package $profiles)
+    $entry=$edited.Files|Where-Object Path -eq $keys
+    Check ([Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($entry.Data)) -eq 'edited keys') 'folder import respects edited raw files'
+    $frozen=Read-VaultSnapshot (Import-VaultInput (Join-Path $package 'backup.json') $profiles)
+    Check ($frozen.Id -eq $s.Id) 'JSON import retains original immutable snapshot'
+    [IO.File]::Delete((Join-Path $package 'Account/remote/cfg/dotakeys_personal.lst'))
+    Throws { Import-VaultInput $package $profiles } 'incomplete portable package rejected'
+    $single=Read-VaultSnapshot (Import-VaultInput (Join-Path $a $keys) $profiles)
+    Check (@($single.Files).Count -eq 1 -and $single.Files[0].Path -eq $keys) 'single raw key file auto-mapped'
+    $raw=Join-Path $root 'rawcfg';[IO.Directory]::CreateDirectory($raw)|Out-Null
+    Put (Join-Path $raw 'custom.cfg') 'custom_setting 1'
+    Put (Join-Path $raw 'not_config.ps1') 'ignored'
+    Throws {Import-VaultInput $raw $profiles} 'ambiguous raw folder requires target scope'
+    $rawImported=Read-VaultSnapshot (Import-VaultInput $raw $profiles -FolderScope LocalCfg)
+    Check (@($rawImported.Files).Count -eq 1 -and $rawImported.Files[0].Path -eq 'local/cfg/custom.cfg') 'folder imports only supported present configs'
+    $parameterFile=Join-Path $root 'parameters.vcfg'
+    Put $parameterFile @'
+"config"
+{
+ "convars"
+ {
+  "dota_minimap_position_option" "1"
+  "unknown_test_setting" "abc"
+ }
+ "bindings"
+ {
+  "\" "toggleconsole"
+ }
+}
+'@
+    $rows=@(Get-VaultParameters $parameterFile)
+    Check ($rows.Count -eq 3) 'nested KV parameters fully enumerated'
+    Check ($rows[0].Scope -eq 'config/convars' -and $rows[0].Line -eq 5) 'parameter scope and source line retained'
+    Check ($rows[0].Confidence -eq '已知用途') 'known minimap parameter explained'
+    Check ($rows[1].Confidence -eq '待确认') 'unknown parameter is not fabricated'
+    Check ($rows[2].Key -eq '\' -and $rows[2].Value -eq 'toggleconsole') 'literal backslash key parsed'
+    $jsonFile=Join-Path $root 'hero_grid_config.json';Put $jsonFile '{"groups":[{"name":"中文组","heroes":[1,2]}]}'
+    $jsonRows=@(Get-VaultParameters $jsonFile)
+    Check ($jsonRows.Count -eq 3 -and $jsonRows[0].Value -eq '中文组') 'JSON arrays and Unicode parameters flattened'
+    $cfgFile=Join-Path $root 'commands.cfg';Put $cfgFile "bind X +attack`nalias test say_hi`nexec other.cfg`n??? unsupported"
+    $cmdRows=@(Get-VaultParameters $cfgFile)
+    Check ($cmdRows.Count -eq 4 -and $cmdRows[-1].Confidence -eq '未解析') 'commands and unparsed original lines retained'
+    $binary=Join-Path $root 'binary.dat';Write-VaultAtomic $binary ([byte[]]@(0,1,2))
+    Check (@(Get-VaultParameters $binary)[0].Confidence -eq '未解析') 'binary data is not misrepresented as parameters'
     Write-Host "ALL $script:passed TESTS PASSED"
 } $root
